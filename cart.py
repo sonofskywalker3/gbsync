@@ -180,9 +180,10 @@ class Cart:
         output_dir = output_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        args = ["--action", "backup-rom", "--path", str(output_dir), "--overwrite"]
+        args = ["--action", "backup-rom", "--overwrite"]
         if mode != "auto":
             args += ["--mode", self.MODE_MAP.get(mode, mode)]
+        args.append(str(output_dir))
 
         logger.info("Reading ROM to %s", output_dir)
         self._run_flashgbx(args)
@@ -217,9 +218,10 @@ class Cart:
         output_dir = output_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        args = ["--action", "backup-save", "--path", str(output_dir), "--overwrite"]
+        args = ["--action", "backup-save", "--overwrite"]
         if mode != "auto":
             args += ["--mode", self.MODE_MAP.get(mode, mode)]
+        args.append(str(output_dir))
 
         logger.info("Reading save to %s", output_dir)
         try:
@@ -254,9 +256,10 @@ class Cart:
         if not save_path.exists():
             raise CartError(f"Save file not found: {save_path}")
 
-        args = ["--action", "restore-save", "--path", str(save_path), "--overwrite"]
+        args = ["--action", "restore-save", "--overwrite"]
         if mode != "auto":
             args += ["--mode", self.MODE_MAP.get(mode, mode)]
+        args.append(str(save_path))
 
         logger.info("Writing save from %s to cart", save_path)
         self._run_flashgbx(args)
