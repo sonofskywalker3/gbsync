@@ -410,6 +410,75 @@ def cli_write_save() -> None:
     print("  Done! Save written to cartridge.")
 
 
+def cli_play() -> None:
+    """Dump ROM/save from cart, set up save for RetroArch, and launch."""
+    import shutil
+    from config import ROM_DIR, SAVE_DIR, CORE_MAP, ensure_directories
+    from emulator import Emulator
+    from saves import SaveManager
+
+    ensure_directories()
+
+    cart = Cart()
+    print("Reading cartridge header...")
+    info = cart.read_header()
+    print(f"  Game:      {info.title}")
+    print(f"  Type:      {info.cart_type}")
+    print(f"  Save Type: {info.save_type}")
+
+    core = CORE_MAP[info.cart_type]
+    rom_ext = core.extensions[0] if core.extensions else ".gb"
+    rom_path = ROM_DIR / (info.safe_title + rom_ext)
+    cart_save_path = SAVE_DIR / (info.safe_title + "_cart.sav")
+
+    # Dump ROM if needed
+    if rom_path.exists():
+        print(f"\nROM already dumped: {rom_path}")
+    else:
+        print(f"\nDumping ROM...")
+        cart.read_rom(rom_path, mode=info.cart_type)
+        print(f"  Done! {rom_path.stat().st_size:,} bytes")
+
+    # Read save from cart
+    print("\nReading save from cartridge...")
+    cart_save = cart.read_save(cart_save_path, mode=info.cart_type)
+    if cart_save:
+        print(f"  Done! {cart_save.stat().st_size:,} bytes")
+    else:
+        print("  No save data on cartridge")
+
+    # Prepare emulator save — copy cart save to where RetroArch expects it
+    emu_save_path = SAVE_DIR / (rom_path.stem + core.save_extension)
+    save_manager = SaveManager(info.safe_title)
+    save_manager.prepare_emulator_save(cart_save, emu_save_path)
+
+    if emu_save_path.exists():
+        print(f"\nEmulator save ready: {emu_save_path}")
+        print(f"  Size: {emu_save_path.stat().st_size:,} bytes")
+
+    # Launch RetroArch
+    print("\nLaunching RetroArch...")
+    print("  (Swap GBxCart for controller now!)")
+    print("  Waiting 10 seconds...")
+    import time
+    time.sleep(10)
+
+    emu = Emulator()
+    emu.launch(rom_path, info.cart_type, SAVE_DIR)
+    print("  RetroArch running! Play your game.")
+    print("  Quit RetroArch when done to sync save back.\n")
+
+    exit_code = emu.wait_for_exit()
+    print(f"\nRetroArch exited (code {exit_code})")
+
+    # Check if save changed
+    if save_manager.sync_save_to_cart(emu_save_path, cart_save):
+        print("\nSave data changed! Plug GBxCart back in to write save.")
+        print("  Then run: python cart.py --write-save")
+    else:
+        print("\nNo save changes detected.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GBSync cart interface")
     group = parser.add_mutually_exclusive_group()
@@ -425,6 +494,10 @@ if __name__ == "__main__":
         "--write-save", action="store_true",
         help="Write save file back to inserted cartridge",
     )
+    group.add_argument(
+        "--play", action="store_true",
+        help="Full flow: dump cart, launch RetroArch, sync save",
+    )
     args = parser.parse_args()
 
     if args.info:
@@ -433,5 +506,7 @@ if __name__ == "__main__":
         cli_dump()
     elif args.write_save:
         cli_write_save()
+    elif args.play:
+        cli_play()
     else:
         parser.print_help()

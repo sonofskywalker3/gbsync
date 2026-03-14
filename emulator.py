@@ -81,16 +81,23 @@ class Emulator:
         if self._save_path.exists():
             self._last_save_mtime = self._save_path.stat().st_mtime
 
+        # Write a temporary override config to force RetroArch to use our save dir.
+        # RetroArch's main config can override --savefile-directory, so we use
+        # --appendconfig which takes priority over the base config.
+        self._override_cfg = save_dir / ".retroarch_override.cfg"
+        self._override_cfg.write_text(
+            f'savefile_directory = "{save_dir}"\n'
+            f'sort_savefiles_enable = "false"\n'
+            f'sort_savefiles_by_content_enable = "false"\n'
+        )
+
         cmd = [
             RETROARCH_BIN,
             "--libretro", str(core_path),
             "--config", str(RETROARCH_CONFIG),
-            "--savefile-directory", str(save_dir),
+            "--appendconfig", str(self._override_cfg),
             str(rom_path),
         ]
-
-        # TODO: Test RetroArch launch flags on Pi Zero 2W — may need
-        # --set-shader, --fullscreen, or performance flags for smooth playback
         logger.info("Launching RetroArch: %s with %s core", rom_path.name, core.core_name)
         logger.debug("Command: %s", " ".join(cmd))
 
