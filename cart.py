@@ -306,15 +306,103 @@ def cli_info() -> None:
     print("\nEverything looks good!")
 
 
+def cli_dump() -> None:
+    """Dump the ROM and save from the inserted cartridge."""
+    from config import ROM_DIR, SAVE_DIR, CORE_MAP, ensure_directories
+    ensure_directories()
+
+    cart = Cart()
+    print("Reading cartridge header...")
+    info = cart.read_header()
+    print(f"  Game:      {info.title}")
+    print(f"  Type:      {info.cart_type}")
+    print(f"  ROM Size:  {info.rom_size}")
+    print(f"  Save Type: {info.save_type}")
+
+    core = CORE_MAP[info.cart_type]
+    rom_ext = core.extensions[0] if core.extensions else ".gb"
+    rom_path = ROM_DIR / (info.safe_title + rom_ext)
+
+    if rom_path.exists():
+        print(f"\nROM already exists: {rom_path}")
+        print(f"  Size: {rom_path.stat().st_size:,} bytes")
+    else:
+        print(f"\nDumping ROM to {rom_path}...")
+        cart.read_rom(rom_path, mode=info.cart_type)
+        print(f"  Done! {rom_path.stat().st_size:,} bytes")
+
+    # Also dump save
+    save_path = SAVE_DIR / (info.safe_title + "_cart.sav")
+    print(f"\nReading save data to {save_path}...")
+    result = cart.read_save(save_path, mode=info.cart_type)
+    if result:
+        print(f"  Done! {save_path.stat().st_size:,} bytes")
+    else:
+        print("  No save data on cartridge (or save type not supported)")
+
+    print(f"\nROM path: {rom_path}")
+    if result:
+        print(f"Save path: {save_path}")
+
+
+def cli_write_save() -> None:
+    """Write a save file back to the inserted cartridge."""
+    from config import SAVE_DIR, CORE_MAP, ensure_directories
+    ensure_directories()
+
+    cart = Cart()
+    print("Reading cartridge header...")
+    info = cart.read_header()
+    print(f"  Game: {info.title} ({info.cart_type})")
+
+    core = CORE_MAP[info.cart_type]
+
+    # Look for the emulator save file (what RetroArch writes)
+    emu_save = SAVE_DIR / (info.safe_title + core.save_extension)
+    # Fall back to cart save
+    cart_save = SAVE_DIR / (info.safe_title + "_cart.sav")
+
+    save_to_write = None
+    if emu_save.exists():
+        save_to_write = emu_save
+        print(f"\nFound emulator save: {emu_save}")
+        print(f"  Size: {emu_save.stat().st_size:,} bytes")
+    elif cart_save.exists():
+        save_to_write = cart_save
+        print(f"\nFound cart save: {cart_save}")
+        print(f"  Size: {cart_save.stat().st_size:,} bytes")
+    else:
+        print(f"\nNo save file found in {SAVE_DIR}")
+        print(f"  Looked for: {emu_save.name} or {cart_save.name}")
+        sys.exit(1)
+
+    print(f"\nWriting save to cartridge...")
+    cart.write_save(save_to_write, mode=info.cart_type)
+    print("  Done! Save written to cartridge.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GBSync cart interface")
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         "--info", action="store_true",
         help="Print GBxCart connection status and cartridge info",
+    )
+    group.add_argument(
+        "--dump", action="store_true",
+        help="Dump ROM and save from inserted cartridge",
+    )
+    group.add_argument(
+        "--write-save", action="store_true",
+        help="Write save file back to inserted cartridge",
     )
     args = parser.parse_args()
 
     if args.info:
         cli_info()
+    elif args.dump:
+        cli_dump()
+    elif args.write_save:
+        cli_write_save()
     else:
         parser.print_help()
