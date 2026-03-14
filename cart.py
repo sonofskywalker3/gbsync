@@ -175,18 +175,34 @@ class Cart:
         Returns:
             Path to the written ROM file.
         """
-        args = ["--action", "backup-rom", "--path", str(output_path)]
+        # FlashGBX --path accepts a directory (it auto-names the file)
+        # or a full file path. We pass the directory and find the output after.
+        output_dir = output_path.parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        args = ["--action", "backup-rom", "--path", str(output_dir), "--overwrite"]
         if mode != "auto":
             args += ["--mode", self.MODE_MAP.get(mode, mode)]
 
-        logger.info("Reading ROM to %s", output_path)
+        logger.info("Reading ROM to %s", output_dir)
         self._run_flashgbx(args)
 
-        if not output_path.exists():
-            raise CartError(f"ROM file was not created at {output_path}")
+        # Find the dumped ROM file — FlashGBX auto-names it
+        rom_files = sorted(output_dir.glob("*.gb*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not rom_files:
+            rom_files = sorted(output_dir.glob("*.*"), key=lambda p: p.stat().st_mtime, reverse=True)
 
-        logger.info("ROM read complete: %s (%d bytes)", output_path, output_path.stat().st_size)
-        return output_path
+        if not rom_files:
+            raise CartError(f"ROM file was not created in {output_dir}")
+
+        dumped = rom_files[0]
+        # Rename to our expected filename if different
+        if dumped != output_path and output_path.name != dumped.name:
+            dumped.rename(output_path)
+            dumped = output_path
+
+        logger.info("ROM read complete: %s (%d bytes)", dumped, dumped.stat().st_size)
+        return dumped
 
     def read_save(self, output_path: Path, mode: str = "auto") -> Path | None:
         """Read the save data from the cartridge.
@@ -198,11 +214,14 @@ class Cart:
         Returns:
             Path to the save file, or None if the cart has no save data.
         """
-        args = ["--action", "backup-save", "--path", str(output_path)]
+        output_dir = output_path.parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        args = ["--action", "backup-save", "--path", str(output_dir), "--overwrite"]
         if mode != "auto":
             args += ["--mode", self.MODE_MAP.get(mode, mode)]
 
-        logger.info("Reading save to %s", output_path)
+        logger.info("Reading save to %s", output_dir)
         try:
             self._run_flashgbx(args)
         except CartError as e:
@@ -211,12 +230,19 @@ class Cart:
                 return None
             raise
 
-        if not output_path.exists():
+        # Find the dumped save file
+        save_files = sorted(output_dir.glob("*.sav"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not save_files:
             logger.warning("Save file was not created — cart may not have save capability")
             return None
 
-        logger.info("Save read complete: %s (%d bytes)", output_path, output_path.stat().st_size)
-        return output_path
+        dumped = save_files[0]
+        if dumped != output_path and output_path.name != dumped.name:
+            dumped.rename(output_path)
+            dumped = output_path
+
+        logger.info("Save read complete: %s (%d bytes)", dumped, dumped.stat().st_size)
+        return dumped
 
     def write_save(self, save_path: Path, mode: str = "auto") -> None:
         """Write save data back to the cartridge.
@@ -228,7 +254,7 @@ class Cart:
         if not save_path.exists():
             raise CartError(f"Save file not found: {save_path}")
 
-        args = ["--action", "restore-save", "--path", str(save_path)]
+        args = ["--action", "restore-save", "--path", str(save_path), "--overwrite"]
         if mode != "auto":
             args += ["--mode", self.MODE_MAP.get(mode, mode)]
 
