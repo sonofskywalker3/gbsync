@@ -102,41 +102,62 @@ class Cart:
             logger.warning("lsusb not available, assuming cart is connected")
             return True
 
-    def read_header(self) -> CartInfo:
+    def read_header(self, mode: str | None = None) -> CartInfo:
         """Read and parse the cartridge header to identify the game.
+
+        Args:
+            mode: Force a specific mode ("GB", "GBC", "GBA").
+                  If None, tries GBA first, then GB/GBC.
 
         Returns:
             CartInfo with title, type, ROM size, and save type.
         """
-        result = self._run_flashgbx(["--action", "info"])
-        return self._parse_header(result.stdout)
+        if mode:
+            flashgbx_mode = self.MODE_MAP.get(mode, mode)
+            result = self._run_flashgbx(["--action", "info", "--mode", flashgbx_mode])
+            return self._parse_header(result.stdout, hint=mode)
 
-    def _parse_header(self, output: str) -> CartInfo:
+        # Try GBA first, then DMG
+        for try_mode, hint in [("agb", "GBA"), ("dmg", "GB")]:
+            try:
+                result = self._run_flashgbx(["--action", "info", "--mode", try_mode])
+                return self._parse_header(result.stdout, hint=hint)
+            except CartError:
+                continue
+
+        raise CartError("Could not read cartridge header in any mode")
+
+    def _parse_header(self, output: str, hint: str = "GB") -> CartInfo:
         """Parse FlashGBX header output into a CartInfo.
 
-        TODO: Confirm actual FlashGBX output format on real hardware and
-        adjust parsing accordingly. This is based on expected output structure.
+        Actual FlashGBX output format:
+            Game Title:           POKEMON LEAF
+            ROM Size:             16 MiB
+            Save Type:            1M FLASH (128 KiB)
+            Cartridge Mode:       Game Boy Advance
         """
         title = ""
-        cart_type = "GB"
+        cart_type = hint
         rom_size = ""
         save_type = ""
 
         for line in output.splitlines():
             line_lower = line.strip().lower()
-            if "title" in line_lower and ":" in line:
+            if "game title:" in line_lower:
                 title = line.split(":", 1)[1].strip()
-            elif "mode" in line_lower or "type" in line_lower:
-                value = line.split(":", 1)[1].strip().upper() if ":" in line else ""
-                if "GBA" in value:
+            elif "game name:" in line_lower and not title:
+                title = line.split(":", 1)[1].strip()
+            elif "cartridge mode:" in line_lower:
+                value = line.split(":", 1)[1].strip()
+                if "advance" in value.lower():
                     cart_type = "GBA"
-                elif "GBC" in value or "COLOR" in value:
+                elif "color" in value.lower():
                     cart_type = "GBC"
                 else:
                     cart_type = "GB"
-            elif "rom size" in line_lower and ":" in line:
+            elif "rom size:" in line_lower:
                 rom_size = line.split(":", 1)[1].strip()
-            elif "save" in line_lower and ":" in line:
+            elif "save type:" in line_lower:
                 save_type = line.split(":", 1)[1].strip()
 
         if not title:
