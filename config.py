@@ -31,7 +31,7 @@ RETROARCH_CONFIG = HOME / ".config/retroarch/retroarch.cfg"
 
 # FlashGBX CLI binary
 # TODO: Confirm install path on Pi — may be ~/.local/bin/FlashGBX or via pip entry point
-FLASHGBX_BIN = "FlashGBX"
+FLASHGBX_BIN = "flashgbx"
 
 
 # --- RetroArch Core Mappings ---
