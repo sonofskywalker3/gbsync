@@ -65,10 +65,13 @@ class Cart:
                 "Install with: pip install FlashGBX"
             )
 
+    # Map cart types to FlashGBX mode flags
+    MODE_MAP = {"GB": "dmg", "GBC": "dmg", "GBA": "agb"}
+
     def _run_flashgbx(self, args: list[str], timeout: int | None = None) -> subprocess.CompletedProcess:
         """Run a FlashGBX CLI command and return the result."""
         timeout = timeout or FLASHGBX_TIMEOUT
-        cmd = [FLASHGBX_BIN] + args
+        cmd = [FLASHGBX_BIN, "--cli"] + args
         logger.debug("Running: %s", " ".join(cmd))
 
         try:
@@ -105,9 +108,7 @@ class Cart:
         Returns:
             CartInfo with title, type, ROM size, and save type.
         """
-        # TODO: Confirm FlashGBX CLI flags for header-only read on real hardware.
-        # The --action and --mode flags may differ between FlashGBX versions.
-        result = self._run_flashgbx(["--action", "header-info"])
+        result = self._run_flashgbx(["--action", "info"])
         return self._parse_header(result.stdout)
 
     def _parse_header(self, output: str) -> CartInfo:
@@ -155,7 +156,7 @@ class Cart:
         """
         args = ["--action", "backup-rom", "--path", str(output_path)]
         if mode != "auto":
-            args += ["--mode", mode]
+            args += ["--mode", self.MODE_MAP.get(mode, mode)]
 
         logger.info("Reading ROM to %s", output_path)
         self._run_flashgbx(args)
@@ -178,7 +179,7 @@ class Cart:
         """
         args = ["--action", "backup-save", "--path", str(output_path)]
         if mode != "auto":
-            args += ["--mode", mode]
+            args += ["--mode", self.MODE_MAP.get(mode, mode)]
 
         logger.info("Reading save to %s", output_path)
         try:
@@ -208,7 +209,7 @@ class Cart:
 
         args = ["--action", "restore-save", "--path", str(save_path)]
         if mode != "auto":
-            args += ["--mode", mode]
+            args += ["--mode", self.MODE_MAP.get(mode, mode)]
 
         logger.info("Writing save from %s to cart", save_path)
         self._run_flashgbx(args)
